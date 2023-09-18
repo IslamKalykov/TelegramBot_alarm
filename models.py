@@ -131,8 +131,7 @@ async def get_event_for_week():
         print(f"Произошла ошибка при сборе данных: {e}")
         return False
 
-### Попробовать выдавать одно красивое сообщения в телегу раз в день
-### Дополнить базу событиями
+
 async def get_event_for_today():
     try:
         current_datetime = datetime.now()
