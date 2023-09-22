@@ -3,7 +3,7 @@ from aiogram import Bot, types
 from aiogram.dispatcher import FSMContext, Dispatcher
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-
+import pymorphy2
 from datetime import datetime
 from dotenv import load_dotenv
 from models import new_bot_users, insert_event, get_events, get_event_by_id, update_event, perform_delete_event, get_event_for_tomorrow, get_event_for_week, get_event_for_today
@@ -11,6 +11,9 @@ from models import new_bot_users, insert_event, get_events, get_event_by_id, upd
 import os
 import logging
 import asyncio
+
+set_hours = 3
+set_minutes = 0
 
 load_dotenv()
 # Замените 'YOUR_BOT_TOKEN' на токен, полученный от BotFather
@@ -74,6 +77,19 @@ async def process_last_name(message: types.Message, state: FSMContext):
         data['last_name'] = message.text
     await message.reply("Отлично! Теперь введите дату рождения в формате ГГГГ-ММ-ДД (например, 1990-05-15):")
     await InsertForm.waiting_for_birthday.set()
+
+
+def decline_name(name:str) -> str:
+    # Создаем объект для морфологического анализа с помощью pymorphy2
+    morph = pymorphy2.MorphAnalyzer()
+
+    # Анализируем имя в именительном падеже
+    parsed_name = morph.parse(name)[0]
+
+    # Получаем форму имени в родительном падеже
+    genitive_name = parsed_name.inflect({'gent'}).word
+
+    return str(genitive_name).capitalize()
 
 
 @dp.message_handler(state=InsertForm.waiting_for_birthday)
@@ -208,10 +224,11 @@ async def generate_event_tomorrow_message():
     if events_tomorrow:
         message_text_tomorrow = "\nЗавтра есть следующие события:\n"
         for event in events_tomorrow:
-            if event[4] == "День рождение":
-                message_text_tomorrow += f"\n🟩 {event[4]} у {event[1]}\n"
+            if event[4] == "День рождения":
+                message_text_tomorrow += f"\n🟩 {event[4]} у {decline_name(event[1])}. Доп.информация: {event[2]}\n"
             elif event[4] == "Оплата":
                 message_text_tomorrow += f"\n🔴 {event[4]} за {event[1]}\n"
+
         return message_text_tomorrow
 
 
@@ -221,7 +238,7 @@ async def generate_event_week_message():
         message_text_week = "\nЧерез неделю следующие события:\n"
         for event in events_week:
             if event[4] == "День рождения":
-                message_text_week += f"\n🟩 {event[4]} у {event[1]}\n"
+                message_text_week += f"\n🟩 {event[4]} у {decline_name(event[1])}. Доп.информация: {event[2]}\n"
             elif event[4] == "Оплата":
                 message_text_week += f"\n🔴 {event[4]} за {event[1]}\n"
         return message_text_week
@@ -232,28 +249,30 @@ async def generate_event_today_message():
     if events_today:
         message_text_today = "\nСегодня следующие события:\n"
         for event in events_today:
-            if event[4] == "День рождение":
-                message_text_today += f"\n🟩 {event[4]} у {event[1]}\n"
+            if event[4] == "День рождения":
+                message_text_today += f"\n🟩 {event[4]} у {decline_name(event[1])}. Доп.информация: {event[2]}\n"
             elif event[4] == "Оплата":
                 message_text_today += f"\n🔴 {event[4]} за {event[1]}\n"
         return message_text_today
 
 
-async def scheduled_job():
+
+async def scheduled_job(set_hours=set_hours, set_minutes=set_minutes):
     while True:
         now = datetime.now()
-        if now.hour == 9 and now.minute == 0:
+        if now.hour == set_hours and now.minute == set_minutes:
             finally_message_text = ""
             message_text_tomorrow = await generate_event_tomorrow_message()
             meesage_text_week = await generate_event_week_message()
             meesage_text_today = await generate_event_today_message()
-            if message_text_tomorrow:
+            if meesage_text_today:
                 finally_message_text += meesage_text_today
             if message_text_tomorrow:
                 finally_message_text += message_text_tomorrow
             if meesage_text_week:
                 finally_message_text += meesage_text_week
             try:
+                # print(finally_message_text)
                 await bot.send_message(chat_id=os.getenv("CHAT_ID"), text=finally_message_text)
             except Exception as e:
                 print(f"Произошла ошибка при отправке сообщения: {e}")
